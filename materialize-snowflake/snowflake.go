@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -23,111 +22,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// config represents the endpoint configuration for snowflake.
-// It must match the one defined for the source specs (flow.yaml) in Rust.
-type config struct {
-	Host      string `json:"host" jsonschema:"title=Host URL,description=The Snowflake Host used for the connection. Must include the account identifier and end in .snowflakecomputing.com. Example: orgname-accountname.snowflakecomputing.com (do not include the protocol)." jsonschema_extras:"order=0,pattern=^[^/:]+.snowflakecomputing.com$"`
-	Account   string `json:"account" jsonschema:"title=Account,description=The Snowflake account identifier." jsonschema_extras:"order=1"`
-	User      string `json:"user" jsonschema:"title=User,description=The Snowflake user login name." jsonschema_extras:"order=2"`
-	Password  string `json:"password" jsonschema:"title=Password,description=The password for the provided user." jsonschema_extras:"secret=true,order=3"`
-	Database  string `json:"database" jsonschema:"title=Database,description=The SQL database to connect to." jsonschema_extras:"order=4"`
-	Schema    string `json:"schema" jsonschema:"title=Schema,description=Database schema for bound collection tables (unless overridden within the binding resource configuration) as well as associated materialization metadata tables." jsonschema_extras:"order=5"`
-	Warehouse string `json:"warehouse,omitempty" jsonschema:"title=Warehouse,description=The Snowflake virtual warehouse used to execute queries. Uses the default warehouse for the Snowflake user if left blank." jsonschema_extras:"order=6"`
-	Role      string `json:"role,omitempty" jsonschema:"title=Role,description=The user role used to perform actions." jsonschema_extras:"order=7"`
-
-	Advanced advancedConfig `json:"advanced,omitempty" jsonschema:"title=Advanced Options,description=Options for advanced users. You should not typically need to modify these." jsonschema_extras:"advanced=true"`
-}
-
-type advancedConfig struct {
-	UpdateDelay string `json:"updateDelay,omitempty" jsonschema:"title=Update Delay,description=Potentially reduce active warehouse time by increasing the delay between updates. Defaults to 30 minutes if unset.,enum=0s,enum=15m,enum=30m,enum=1h,enum=2h,enum=4h"`
-}
-
-// ToURI converts the Config to a DSN string.
-func (c *config) ToURI(tenant string) string {
-	// Build a DSN connection string.
-	var configCopy = c.asSnowflakeConfig(tenant)
-	// client_session_keep_alive causes the driver to issue a periodic keepalive request.
-	// Without this, the authentication token will expire after 4 hours of inactivity.
-	// The Params map will not have been initialized if the endpoint config didn't specify
-	// it, so we check and initialize here if needed.
-	if configCopy.Params == nil {
-		configCopy.Params = make(map[string]*string)
-	}
-	configCopy.Params["client_session_keep_alive"] = &trueString
-	dsn, err := sf.DSN(&configCopy)
-	if err != nil {
-		panic(fmt.Errorf("building snowflake dsn: %w", err))
-	}
-
-	return dsn
-}
-
-func (c *config) asSnowflakeConfig(tenant string) sf.Config {
-	var maxStatementCount string = "0"
-	var json string = "json"
-	return sf.Config{
-		Account:     c.Account,
-		Host:        c.Host,
-		User:        c.User,
-		Password:    c.Password,
-		Database:    c.Database,
-		Schema:      c.Schema,
-		Warehouse:   c.Warehouse,
-		Role:        c.Role,
-		Application: fmt.Sprintf("%s_EstuaryFlow", tenant),
-		Params: map[string]*string{
-			// By default Snowflake expects the number of statements to be provided
-			// with every request. By setting this parameter to zero we are allowing a
-			// variable number of statements to be executed in a single request
-			"MULTI_STATEMENT_COUNT":  &maxStatementCount,
-			"GO_QUERY_RESULT_FORMAT": &json,
-		},
-	}
-}
-
-var hostRe = regexp.MustCompile(`(?i)^.+.snowflakecomputing\.com$`)
-
-func validHost(h string) error {
-	hasProtocol := strings.Contains(h, "://")
-	missingDomain := !hostRe.MatchString(h)
-
-	if hasProtocol && missingDomain {
-		return fmt.Errorf("invalid host %q (must end in snowflakecomputing.com and not include a protocol)", h)
-	} else if hasProtocol {
-		return fmt.Errorf("invalid host %q (must not include a protocol)", h)
-	} else if missingDomain {
-		return fmt.Errorf("invalid host %q (must end in snowflakecomputing.com)", h)
-	}
-
-	return nil
-}
-
-func (c *config) Validate() error {
-	var requiredProperties = [][]string{
-		{"account", c.Account},
-		{"host", c.Host},
-		{"user", c.User},
-		{"password", c.Password},
-		{"database", c.Database},
-		{"schema", c.Schema},
-	}
-	for _, req := range requiredProperties {
-		if req[1] == "" {
-			return fmt.Errorf("missing '%s'", req[0])
-		}
-	}
-
-	if _, err := m.ParseDelay(c.Advanced.UpdateDelay); err != nil {
-		return err
-	}
-
-	return validHost(c.Host)
-}
-
 type tableConfig struct {
 	Table  string `json:"table" jsonschema_extras:"x-collection-name=true"`
 	Schema string `json:"schema,omitempty" jsonschema:"title=Alternative Schema,description=Alternative schema for this table (optional)"`
-	Delta  bool   `json:"delta_updates,omitempty"`
+	Delta  bool   `json:"delta_updates,omitempty" jsonschema:"title=Delta Updates,description=Use Private Key authentication to enable Snowpipe for Delta Update bindings"`
 
 	// If the endpoint schema is the same as the resource schema, the resource path will be only the
 	// table name. This is to provide compatibility for materializations that were created prior to
@@ -224,8 +122,20 @@ func newSnowflakeDriver() *sql.Driver {
 var _ m.DelayedCommitter = (*transactor)(nil)
 
 type transactor struct {
-	cfg *config
-	db  *stdsql.DB
+	cfg        *config
+	db         *stdsql.DB
+	pipeClient *PipeClient
+
+	// We initialise pipes (with a create or replace query) on the first Store
+	// to ensure that queries running as part of the first recovery Acknowledge
+	// do not create duplicates. Queries running on a pipe are idempotent so long
+	// as the pipe is not removed or replaced. The replace clause of the query
+	// will wipe the history of the pipe and so lead to duplicate documents
+	pipesInit bool
+
+	// map of pipe name to beginMarker cursors
+	pipeMarkers map[string]string
+
 	// Variables exclusively used by Load.
 	load struct {
 		conn *stdsql.Conn
@@ -239,6 +149,9 @@ type transactor struct {
 	bindings    []*binding
 	updateDelay time.Duration
 	cp          checkpoint
+
+	// this shard's range spec, used to key pipes so they don't collide
+	_range *pf.RangeSpec
 }
 
 func (t *transactor) AckDelay() time.Duration {
@@ -277,10 +190,25 @@ func newTransactor(
 		return nil, fmt.Errorf("newTransactor stdsql.Open: %w", err)
 	}
 
+	var pipeClient *PipeClient
+	if cfg.Credentials.AuthType == JWT {
+		var accountName string
+		if err := db.QueryRowContext(ctx, "SELECT CURRENT_ACCOUNT()").Scan(&accountName); err != nil {
+			return nil, fmt.Errorf("fetching current account name: %w", err)
+		}
+		pipeClient, err = NewPipeClient(cfg, accountName, ep.Tenant)
+		if err != nil {
+			return nil, fmt.Errorf("NewPipeCLient: %w", err)
+		}
+	}
+
 	var d = &transactor{
-		cfg:       cfg,
-		templates: renderTemplates(dialect),
-		db:        db,
+		cfg:         cfg,
+		templates:   renderTemplates(dialect),
+		db:          db,
+		pipeClient:  pipeClient,
+		pipeMarkers: make(map[string]string),
+		_range:      open.Range,
 	}
 
 	if d.updateDelay, err = m.ParseDelay(cfg.Advanced.UpdateDelay); err != nil {
@@ -316,7 +244,8 @@ func newTransactor(
 }
 
 type binding struct {
-	target sql.Table
+	target   sql.Table
+	pipeName string
 	// Variables exclusively used by Load.
 	load struct {
 		loadQuery string
@@ -370,7 +299,7 @@ func (d *transactor) Load(it *m.LoadIterator, loaded func(int, json.RawMessage) 
 			// Pass.
 		} else if dir, err := b.load.stage.flush(); err != nil {
 			return fmt.Errorf("load.stage(): %w", err)
-		} else if subqueries[i], err = RenderTableAndFileTemplate(tableAndFile{Table: b.target, File: dir}, d.templates.loadQuery); err != nil {
+		} else if subqueries[i], err = RenderTableAndFileTemplate(b.target, dir, d.templates.loadQuery); err != nil {
 			return fmt.Errorf("loadQuery template: %w", err)
 		} else {
 			toDelete = append(toDelete, dir)
@@ -445,11 +374,38 @@ type checkpointItem struct {
 	Table     string
 	Query     string
 	StagedDir string
+	PipeName  string
+	PipeFiles []fileRecord
 }
 
 type checkpoint = map[string]*checkpointItem
 
 func (d *transactor) Store(it *m.StoreIterator) (m.StartCommitFunc, error) {
+	var ctx = it.Context()
+
+	if !d.pipesInit {
+		log.Info("store: initialising pipes")
+		for _, b := range d.bindings {
+			// If this is a delta updates binding and we are using JWT auth type, this binding
+			// can use snowpipe
+			if b.target.DeltaUpdates && d.cfg.Credentials.AuthType == JWT {
+				if pipeName, err := RenderTableAndShardTemplate(b.target, d._range.KeyBegin, d.templates.pipeName); err != nil {
+					return nil, fmt.Errorf("pipeName template: %w", err)
+				} else {
+					b.pipeName = fmt.Sprintf("%s.%s.%s", d.cfg.Database, d.cfg.Schema, strings.ToUpper(strings.Trim(pipeName, "`")))
+				}
+
+				if createPipe, err := RenderTableAndShardTemplate(b.target, d._range.KeyBegin, d.templates.createPipe); err != nil {
+					return nil, fmt.Errorf("createPipe template: %w", err)
+				} else if _, err := d.db.ExecContext(ctx, createPipe); err != nil {
+					return nil, fmt.Errorf("creating pipe for table %q: %w", b.target.Path, err)
+				}
+			}
+		}
+
+		d.pipesInit = true
+	}
+
 	log.Info("store: starting encoding and uploading of files")
 	for it.Next() {
 		var b = d.bindings[it.Binding]
@@ -458,7 +414,7 @@ func (d *transactor) Store(it *m.StoreIterator) (m.StartCommitFunc, error) {
 			b.store.mustMerge = true
 		}
 
-		if err := b.store.stage.start(it.Context(), d.db); err != nil {
+		if err := b.store.stage.start(ctx, d.db); err != nil {
 			return nil, err
 		} else if converted, err := b.target.ConvertAll(it.Key, it.Values, it.RawJSON); err != nil {
 			return nil, fmt.Errorf("converting Store: %w", err)
@@ -485,7 +441,7 @@ func (d *transactor) Store(it *m.StoreIterator) (m.StartCommitFunc, error) {
 		}
 
 		if b.store.mustMerge {
-			if mergeIntoQuery, err := RenderTableAndFileTemplate(tableAndFile{Table: b.target, File: dir}, d.templates.mergeInto); err != nil {
+			if mergeIntoQuery, err := RenderTableAndFileTemplate(b.target, dir, d.templates.mergeInto); err != nil {
 				return nil, fmt.Errorf("mergeInto template: %w", err)
 			} else {
 				d.cp[b.target.StateKey] = &checkpointItem{
@@ -494,8 +450,16 @@ func (d *transactor) Store(it *m.StoreIterator) (m.StartCommitFunc, error) {
 					StagedDir: dir,
 				}
 			}
+		} else if b.pipeName != "" {
+			d.cp[b.target.StateKey] = &checkpointItem{
+				Table:     b.target.Identifier,
+				StagedDir: dir,
+				PipeFiles: b.store.stage.uploaded,
+				PipeName:  b.pipeName,
+			}
+
 		} else {
-			if copyIntoQuery, err := RenderTableAndFileTemplate(tableAndFile{Table: b.target, File: dir}, d.templates.copyInto); err != nil {
+			if copyIntoQuery, err := RenderTableAndFileTemplate(b.target, dir, d.templates.copyInto); err != nil {
 				return nil, fmt.Errorf("copyInto template: %w", err)
 			} else {
 				d.cp[b.target.StateKey] = &checkpointItem{
@@ -517,16 +481,91 @@ func (d *transactor) Store(it *m.StoreIterator) (m.StartCommitFunc, error) {
 	}, nil
 }
 
+type pipeRecord struct {
+	files     []fileRecord
+	dir       string
+	tableName string
+}
+
+// When a file has been successfully loaded, we remove it from the pipe record
+func (pipe *pipeRecord) fileLoaded(file string) bool {
+	for i, f := range pipe.files {
+		if f.Path == file {
+			pipe.files = append(pipe.files[:i], pipe.files[i+1:]...)
+			return true
+		}
+	}
+
+	return false
+}
+
+type copyHistoryRow struct {
+	fileName          string
+	status            string
+	firstErrorMessage string
+}
+
+func (d *transactor) copyHistory(ctx context.Context, tableName string, fileNames []string) ([]copyHistoryRow, error) {
+	query, err := RenderCopyHistoryTemplate(tableName, fileNames, d.templates.copyHistory)
+	if err != nil {
+		return nil, fmt.Errorf("snowpipe: rendering copy history: %w", err)
+	}
+
+	rows, err := d.store.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("snowpipe: fetching copy history: %w", err)
+	}
+	defer rows.Close()
+
+	var items []copyHistoryRow
+
+	var (
+		fileName                  string
+		status                    string
+		firstErrorMessage         string
+		firstErrorMessageNullable stdsql.NullString
+	)
+
+	for rows.Next() {
+		if err := rows.Scan(&fileName, &status, &firstErrorMessageNullable); err != nil {
+			return nil, fmt.Errorf("scanning copy history row: %w", err)
+		}
+
+		if firstErrorMessageNullable.Valid {
+			firstErrorMessage = firstErrorMessageNullable.String
+		}
+		log.WithFields(log.Fields{
+			"fileName":          fileName,
+			"status":            status,
+			"firstErrorMessage": firstErrorMessage,
+			"tableName":         tableName,
+		}).Info("snowpipe: copy history row")
+
+		items = append(items, copyHistoryRow{
+			fileName:          fileName,
+			status:            status,
+			firstErrorMessage: firstErrorMessage,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("snowpipe: reading copy history: %w", err)
+	}
+
+	return items, nil
+}
+
 // Acknowledge merges data from temporary table to main table
 func (d *transactor) Acknowledge(ctx context.Context) (*pf.ConnectorState, error) {
-	var asyncCtx = sf.WithAsyncMode(ctx)
-	log.Info("store: starting committing changes")
-
 	// Run the queries using AsyncMode, which means that `ExecContext` will not block
 	// until the query is successful, rather we will store the results of these queries
 	// in a map so that we can then call `RowsAffected` on them, blocking until
 	// the queries are actually executed and done
+	var asyncCtx = sf.WithAsyncMode(ctx)
+	log.Info("store: starting committing changes")
+
 	var results = make(map[string]stdsql.Result)
+	var pipes = make(map[string]*pipeRecord)
 	for stateKey, item := range d.cp {
 		// we skip queries that belong to tables which do not have a binding anymore
 		// since these tables might be deleted already
@@ -534,11 +573,31 @@ func (d *transactor) Acknowledge(ctx context.Context) (*pf.ConnectorState, error
 			continue
 		}
 
-		log.WithField("table", item.Table).Info("store: starting query")
-		if result, err := d.store.conn.ExecContext(asyncCtx, item.Query); err != nil {
-			return nil, fmt.Errorf("query %q failed: %w", item.Query, err)
-		} else {
-			results[stateKey] = result
+		if len(item.Query) > 0 {
+			log.WithField("table", item.Table).Info("store: starting query")
+			if result, err := d.store.conn.ExecContext(asyncCtx, item.Query); err != nil {
+				return nil, fmt.Errorf("query %q failed: %w", item.Query, err)
+			} else {
+				results[stateKey] = result
+			}
+		} else if len(item.PipeFiles) > 0 {
+			log.WithField("table", item.Table).Info("store: starting pipe requests")
+			var fileRequests = make([]FileRequest, len(item.PipeFiles))
+			for i, f := range item.PipeFiles {
+				fileRequests[i] = FileRequest(f)
+			}
+
+			if resp, err := d.pipeClient.InsertFiles(item.PipeName, fileRequests); err != nil {
+				return nil, fmt.Errorf("snowpipe insertFiles: %w", err)
+			} else {
+				log.WithField("response", resp).Debug("insertFiles successful")
+			}
+
+			pipes[item.PipeName] = &pipeRecord{
+				files:     item.PipeFiles,
+				dir:       item.StagedDir,
+				tableName: item.Table,
+			}
 		}
 	}
 
@@ -550,6 +609,115 @@ func (d *transactor) Acknowledge(ctx context.Context) (*pf.ConnectorState, error
 		log.WithField("table", item.Table).Info("store: finished query")
 
 		d.deleteFiles(ctx, []string{item.StagedDir})
+	}
+
+	// Keep asking for a report on the files that have been submitted for processing
+	// until they have all been successful, or an error has been thrown
+
+	// If we see no results from the REST API for `maxTries` iterations, then we
+	// fallback to asking the `COPY_HISTORY` table.
+	var maxTries = 10
+	for pipeName, pipe := range pipes {
+		for tries := 0; tries < maxTries; tries++ {
+			// We first try to check the status of pipes using the REST API's insertReport
+			// The REST API does not wake up the warehouse, hence our preference
+			// however this API is not the most ergonomic and sometimes does not yield
+			// results as expected
+			report, err := d.pipeClient.InsertReport(pipeName, d.pipeMarkers[pipeName])
+			if err != nil {
+				return nil, fmt.Errorf("snowpipe: insertReports: %w", err)
+			}
+
+			// completeResult=false means the latest report we received has a cursor
+			// which is ahead, and some results have not been seen by us and will not be
+			// seen with the given cursor. So we reset the cursor in this case and try again.
+			if !report.CompleteResult {
+				tries--
+				d.pipeMarkers[pipeName] = ""
+			} else {
+				d.pipeMarkers[pipeName] = report.NextBeginMark
+			}
+
+			// If the files have already been loaded, when we submit a request to
+			// load those files again, our request will not show up in reports.
+			// Moreover, insertReport only retains events for 10 minutes.
+			// One way to find out whether the files were successfully loaded is to check
+			// the COPY_HISTORY to make sure they are there. The COPY_HISTORY is much more
+			// reliable. If they are not there, then something is wrong.
+			if len(report.Files) == 0 {
+				// We try `maxTries` times since it may take some time for the REST API
+				// to reflect the new pipe requests
+				if tries < maxTries-1 {
+					time.Sleep(5 * time.Second)
+					continue
+				}
+
+				log.WithFields(log.Fields{
+					"tries": tries,
+					"pipe":  pipeName,
+				}).Info("snowpipe: no files in report, fetching copy history from warehouse")
+
+				var fileNames = make([]string, len(pipe.files))
+				for i, f := range pipe.files {
+					fileNames[i] = f.Path
+				}
+
+				rows, err := d.copyHistory(ctx, pipe.tableName, fileNames)
+				if err != nil {
+					return nil, err
+				}
+
+				// If there are items still in progress, we continue retrying until those items
+				// resolve to another status
+				var hasItemsInProgress = false
+
+				for _, row := range rows {
+					if row.status == "Loaded" {
+						pipe.fileLoaded(row.fileName)
+					} else if row.status == "Load in progress" {
+						hasItemsInProgress = true
+					} else {
+						return nil, fmt.Errorf("unexpected status %q for files in pipe %q: %s", row.status, pipeName, row.firstErrorMessage)
+					}
+				}
+
+				// If items are still in progress, we continue trying to fetch their results
+				if hasItemsInProgress {
+					tries--
+					time.Sleep(2 * time.Second)
+					continue
+				}
+
+				if len(pipe.files) > 0 {
+					return nil, fmt.Errorf("snowpipe: could not find reports of successful processing for all files of pipe %v", pipe)
+				}
+
+				// All files have been processed for this pipe, we can skip to the next pipe
+				d.deleteFiles(ctx, []string{pipe.dir})
+				break
+			}
+
+			// So long as we are able to get some results from the REST API, we do not
+			// want to ask COPY_HISTORY. So we reset the counter if we see some results from the REST API
+			tries = 0
+
+			for _, reportFile := range report.Files {
+				if reportFile.Status == "LOADED" {
+					pipe.fileLoaded(reportFile.Path)
+				} else if reportFile.Status == "LOAD_FAILED" || reportFile.Status == "PARTIALLY_LOADED" {
+					return nil, fmt.Errorf("failed to load files in pipe %q: %s, %s", pipeName, reportFile.FirstError, reportFile.SystemError)
+				} else if reportFile.Status == "LOAD_IN_PROGRESS" {
+					continue
+				}
+			}
+
+			if len(pipe.files) == 0 {
+				d.deleteFiles(ctx, []string{pipe.dir})
+				break
+			} else {
+				time.Sleep(5 * time.Second)
+			}
+		}
 	}
 
 	log.Info("store: finished committing changes")

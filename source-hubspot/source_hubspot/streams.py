@@ -239,15 +239,18 @@ class API:
 
         schema = {
             "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": ["null", "object"],
+            "type": "object",
             "additionalProperties": True,
             "properties": {
-                "id": {"type": ["null", "string"]},
+                "id": {"type": "string"},
                 "createdAt": {"type": ["null", "string"], "format": "date-time"},
                 "updatedAt": {"type": ["null", "string"], "format": "date-time"},
                 "archived": {"type": ["null", "boolean"]},
                 "properties": {"type": ["null", "object"], "properties": properties},
             },
+              "required": [
+                "id"
+                ]
         }
 
         return schema

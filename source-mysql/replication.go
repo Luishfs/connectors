@@ -419,6 +419,8 @@ func (rs *mysqlReplicationStream) run(ctx context.Context) error {
 			} else {
 				logrus.WithField("event", event.Header.EventType.String()).Debug("Generic Event")
 			}
+		case *replication.RowsQueryEvent:
+			logrus.WithField("query", string(data.Query)).Debug("ignoring Rows Query Event")
 		default:
 			return fmt.Errorf("unhandled event type: %q", event.Header.EventType)
 		}
@@ -674,7 +676,9 @@ func (rs *mysqlReplicationStream) handleAlterTable(ctx context.Context, stmt *sq
 
 func translateDataType(t sqlparser.ColumnType) any {
 	var typeName = strings.ToLower(t.Type)
-	if typeName == "enum" || typeName == "set" {
+	if typeName == "enum" {
+		return &mysqlColumnType{Type: typeName, EnumValues: append([]string{""}, t.EnumValues...)}
+	} else if typeName == "set" {
 		return &mysqlColumnType{Type: typeName, EnumValues: t.EnumValues}
 	}
 	return typeName

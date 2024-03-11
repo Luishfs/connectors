@@ -132,6 +132,9 @@ type templates struct {
 	loadQuery         *template.Template
 	copyInto          *template.Template
 	mergeInto         *template.Template
+	pipeName          *template.Template
+	createPipe        *template.Template
+	copyHistory       *template.Template
 }
 
 func renderTemplates(dialect sql.Dialect) templates {
@@ -214,6 +217,27 @@ SELECT * FROM (SELECT -1, CAST(NULL AS VARIANT) LIMIT 0) as nodoc
 {{ end -}}
 {{ end }}
 
+{{ define "pipe_name" -}}
+flow_pipe_{{ $.Table.Binding }}_{{ Last $.Table.Path }}_{{ $.ShardKeyBegin }}
+{{- end }}
+
+{{ define "createPipe" }}
+CREATE OR REPLACE PIPE {{ template "pipe_name" . }}
+  COMMENT = 'Pipe for table {{ $.Table.Path }}'
+  AS COPY INTO {{ $.Table.Identifier }} (
+	{{ range $ind, $key := $.Table.Columns }}
+		{{- if $ind }}, {{ end -}}
+		{{$key.Identifier -}}
+	{{- end }}
+) FROM (
+	SELECT {{ range $ind, $key := $.Table.Columns }}
+	{{- if $ind }}, {{ end -}}
+	$1[{{$ind}}] AS {{$key.Identifier -}}
+	{{- end }}
+	FROM @flow_v1
+);
+{{ end }}
+
 {{ define "copyInto" }}
 COPY INTO {{ $.Table.Identifier }} (
 	{{ range $ind, $key := $.Table.Columns }}
@@ -269,6 +293,14 @@ WHEN NOT MATCHED THEN
 	{{- end -}}
 );
 {{ end }}
+
+{{ define "copyHistory" }}
+SELECT FILE_NAME, STATUS, FIRST_ERROR_MESSAGE FROM TABLE(INFORMATION_SCHEMA.COPY_HISTORY(
+  TABLE_NAME=>'{{ $.TableName }}',
+  START_TIME=>DATEADD(DAY, -14, CURRENT_TIMESTAMP())
+)) WHERE
+FILE_NAME IN ('{{ Join $.Files "','" }}')
+{{ end }}
   `)
 
 	return templates{
@@ -277,6 +309,9 @@ WHEN NOT MATCHED THEN
 		loadQuery:         tplAll.Lookup("loadQuery"),
 		copyInto:          tplAll.Lookup("copyInto"),
 		mergeInto:         tplAll.Lookup("mergeInto"),
+		pipeName:          tplAll.Lookup("pipe_name"),
+		createPipe:        tplAll.Lookup("createPipe"),
+		copyHistory:       tplAll.Lookup("copyHistory"),
 	}
 }
 
@@ -289,19 +324,60 @@ FILE_FORMAT = (
 COMMENT = 'Internal stage used by Estuary Flow to stage loaded & stored documents'
 ;`
 
+type tableAndShard struct {
+	Table         sql.Table
+	ShardKeyBegin string
+}
+
+func RenderTableAndShardTemplate(table sql.Table, shardKeyBegin uint32, tpl *template.Template) (string, error) {
+	var w strings.Builder
+	var keyBegin = fmt.Sprintf("%08x", shardKeyBegin)
+	if err := tpl.Execute(&w, &tableAndShard{Table: table, ShardKeyBegin: keyBegin}); err != nil {
+		return "", err
+	}
+	var s = w.String()
+	log.WithFields(log.Fields{
+		"rendered":      s,
+		"table":         table,
+		"shardKeyBegin": shardKeyBegin,
+	}).Debug("rendered template")
+	return s, nil
+}
+
 type tableAndFile struct {
 	Table sql.Table
 	File  string
 }
 
-// RenderTableTemplate is a simple implementation of rendering a template with a Table
-// as its context. It's here for demonstration purposes mostly. Feel free to not use it.
-func RenderTableAndFileTemplate(tf tableAndFile, tpl *template.Template) (string, error) {
+func RenderTableAndFileTemplate(table sql.Table, file string, tpl *template.Template) (string, error) {
 	var w strings.Builder
-	if err := tpl.Execute(&w, &tf); err != nil {
+	if err := tpl.Execute(&w, &tableAndFile{Table: table, File: file}); err != nil {
 		return "", err
 	}
 	var s = w.String()
-	log.WithField("rendered", s).WithField("tableAndFile", tf).Debug("rendered template")
+	log.WithFields(log.Fields{
+		"rendered": s,
+		"table":    table,
+		"file":     file,
+	}).Debug("rendered template")
+	return s, nil
+}
+
+type copyHistory struct {
+	TableName string
+	Files     []string
+}
+
+func RenderCopyHistoryTemplate(tableName string, files []string, tpl *template.Template) (string, error) {
+	var w strings.Builder
+	if err := tpl.Execute(&w, &copyHistory{TableName: tableName, Files: files}); err != nil {
+		return "", err
+	}
+	var s = w.String()
+	log.WithFields(log.Fields{
+		"rendered":  s,
+		"tableName": tableName,
+		"files":     files,
+	}).Debug("rendered template")
 	return s, nil
 }

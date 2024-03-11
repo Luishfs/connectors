@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"os"
+	"strings"
 
 	sf "github.com/snowflakedb/gosnowflake"
 )
@@ -37,7 +41,20 @@ func mustDSN() string {
 		{"SNOWFLAKE_SCHEMA", &conf.Schema},
 		{"SNOWFLAKE_WAREHOUSE", &conf.Warehouse},
 	} {
-		*prop.dest = os.Getenv(prop.key)
+		if v, exists := os.LookupEnv(prop.key); exists {
+			*prop.dest = v
+		}
+	}
+
+	if v, exists := os.LookupEnv("SNOWFLAKE_PRIVATE_KEY"); exists {
+		conf.Authenticator = sf.AuthTypeJwt
+		var pkString = strings.ReplaceAll(v, "\\n", "\n")
+		var block, _ = pem.Decode([]byte(pkString))
+		if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err != nil {
+			panic(fmt.Errorf("parsing private key: %w", err))
+		} else {
+			conf.PrivateKey = key.(*rsa.PrivateKey)
+		}
 	}
 
 	dsn, err := sf.DSN(&conf)

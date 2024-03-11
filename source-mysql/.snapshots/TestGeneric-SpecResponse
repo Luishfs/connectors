@@ -133,12 +133,14 @@
       "namespace": {
         "type": "string",
         "title": "Schema",
-        "description": "The schema (namespace) in which the table resides."
+        "description": "The schema (namespace) in which the table resides.",
+        "readOnly": true
       },
       "stream": {
         "type": "string",
         "title": "Table Name",
-        "description": "The name of the table to be captured."
+        "description": "The name of the table to be captured.",
+        "readOnly": true
       }
     },
     "type": "object",
