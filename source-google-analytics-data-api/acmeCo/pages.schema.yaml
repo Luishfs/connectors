@@ -1,0 +1,40 @@
+---
+$schema: "https://json-schema.org/draft-07/schema#"
+type:
+  - object
+additionalProperties: true
+properties:
+  property_id:
+    type:
+      - string
+  date:
+    type: string
+    description: "The date of the event, formatted as YYYYMMDD."
+  hostName:
+    type: string
+    description: "Includes the subdomain and domain names of a URL; for example, the Host Name of www.example.com/contact.html is www.example.com."
+  pagePathPlusQueryString:
+    type: string
+    description: "The portion of the URL following the hostname for web pages visited; for example, the `pagePathPlusQueryString` portion of `https://www.example.com/store/contact-us?query_string=true` is `/store/contact-us?query_string=true`."
+  screenPageViews:
+    type:
+      - "null"
+      - integer
+    description: The number of app screens or web pages your users viewed. Repeated views of a single page or screen are counted. (screen_view + page_view events).
+  bounceRate:
+    type:
+      - "null"
+      - number
+    description: "The percentage of sessions that were not engaged ((Sessions Minus Engaged sessions) divided by Sessions). This metric is returned as a fraction; for example, 0.2761 means 27.61% of sessions were bounces."
+  _meta:
+    type: object
+    properties:
+      row_id:
+        type: integer
+    required:
+      - row_id
+required:
+  - date
+  - hostName
+  - pagePathPlusQueryString
+  - property_id

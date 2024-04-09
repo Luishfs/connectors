@@ -1,0 +1,249 @@
+[
+  [
+    "acmeCo/daily_active_users",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "active1DayUsers": 2,
+      "date": "20240408",
+      "property_id": "431462875"
+    }
+  ],
+  [
+    "acmeCo/weekly_active_users",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "active7DayUsers": 2,
+      "date": "20240408",
+      "property_id": "431462875"
+    }
+  ],
+  [
+    "acmeCo/weekly_active_users",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 1
+      },
+      "active7DayUsers": 2,
+      "date": "20240409",
+      "property_id": "431462875"
+    }
+  ],
+  [
+    "acmeCo/four_weekly_active_users",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "active28DayUsers": 2,
+      "date": "20240408",
+      "property_id": "431462875"
+    }
+  ],
+  [
+    "acmeCo/four_weekly_active_users",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 1
+      },
+      "active28DayUsers": 2,
+      "date": "20240409",
+      "property_id": "431462875"
+    }
+  ],
+  [
+    "acmeCo/devices",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "averageSessionDuration": 1744.051628,
+      "bounceRate": 0.5,
+      "browser": "Chrome",
+      "date": "20240408",
+      "deviceCategory": "desktop",
+      "newUsers": 1,
+      "operatingSystem": "Linux",
+      "property_id": "431462875",
+      "screenPageViews": 18,
+      "screenPageViewsPerSession": 9.0,
+      "sessions": 2,
+      "sessionsPerUser": 2.0,
+      "totalUsers": 1
+    }
+  ],
+  [
+    "acmeCo/devices",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 1
+      },
+      "averageSessionDuration": 237.4445105,
+      "bounceRate": 0.0,
+      "browser": "Firefox",
+      "date": "20240408",
+      "deviceCategory": "desktop",
+      "newUsers": 1,
+      "operatingSystem": "Linux",
+      "property_id": "431462875",
+      "screenPageViews": 5,
+      "screenPageViewsPerSession": 2.5,
+      "sessions": 2,
+      "sessionsPerUser": 2.0,
+      "totalUsers": 1
+    }
+  ],
+  [
+    "acmeCo/locations",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "averageSessionDuration": 990.74806925,
+      "bounceRate": 0.25,
+      "city": "Maringa",
+      "country": "Brazil",
+      "date": "20240408",
+      "newUsers": 2,
+      "property_id": "431462875",
+      "region": "State of Parana",
+      "screenPageViews": 23,
+      "screenPageViewsPerSession": 5.75,
+      "sessions": 4,
+      "sessionsPerUser": 2.0,
+      "totalUsers": 2
+    }
+  ],
+  [
+    "acmeCo/pages",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "bounceRate": 0.25,
+      "date": "20240408",
+      "hostName": "127.0.0.1",
+      "pagePathPlusQueryString": "/",
+      "property_id": "431462875",
+      "screenPageViews": 20
+    }
+  ],
+  [
+    "acmeCo/pages",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 1
+      },
+      "bounceRate": 1.0,
+      "date": "20240408",
+      "hostName": "127.0.0.1",
+      "pagePathPlusQueryString": "/?gtm_debug=1712598706686",
+      "property_id": "431462875",
+      "screenPageViews": 1
+    }
+  ],
+  [
+    "acmeCo/pages",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 2
+      },
+      "bounceRate": 0.0,
+      "date": "20240408",
+      "hostName": "127.0.0.1",
+      "pagePathPlusQueryString": "/?gtm_debug=1712598724794",
+      "property_id": "431462875",
+      "screenPageViews": 1
+    }
+  ],
+  [
+    "acmeCo/pages",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 3
+      },
+      "bounceRate": 0.0,
+      "date": "20240408",
+      "hostName": "127.0.0.1",
+      "pagePathPlusQueryString": "/?gtm_debug=1712598763697",
+      "property_id": "431462875",
+      "screenPageViews": 1
+    }
+  ],
+  [
+    "acmeCo/traffic_sources",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "averageSessionDuration": 1015.1676726666666,
+      "bounceRate": 0.0,
+      "date": "20240408",
+      "newUsers": 2,
+      "property_id": "431462875",
+      "screenPageViews": 15,
+      "screenPageViewsPerSession": 5.0,
+      "sessionMedium": "(none)",
+      "sessionSource": "(direct)",
+      "sessions": 3,
+      "sessionsPerUser": 1.5,
+      "totalUsers": 2
+    }
+  ],
+  [
+    "acmeCo/traffic_sources",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 1
+      },
+      "averageSessionDuration": 305.829753,
+      "bounceRate": 1.0,
+      "date": "20240408",
+      "newUsers": 0,
+      "property_id": "431462875",
+      "screenPageViews": 8,
+      "screenPageViewsPerSession": 2.6666666666666665,
+      "sessionMedium": "(not set)",
+      "sessionSource": "(not set)",
+      "sessions": 3,
+      "sessionsPerUser": 1.5,
+      "totalUsers": 2
+    }
+  ],
+  [
+    "acmeCo/website_overview",
+    {
+      "_meta": {
+        "op": "u",
+        "row_id": 0
+      },
+      "averageSessionDuration": 990.74806925,
+      "bounceRate": 0.25,
+      "date": "20240408",
+      "newUsers": 2,
+      "property_id": "431462875",
+      "screenPageViews": 23,
+      "screenPageViewsPerSession": 5.75,
+      "sessions": 4,
+      "sessionsPerUser": 2.0,
+      "totalUsers": 2
+    }
+  ]
+]

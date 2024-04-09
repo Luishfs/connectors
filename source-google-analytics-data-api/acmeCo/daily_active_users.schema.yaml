@@ -1,0 +1,27 @@
+---
+$schema: "https://json-schema.org/draft-07/schema#"
+type:
+  - object
+additionalProperties: true
+properties:
+  property_id:
+    type:
+      - string
+  date:
+    type: string
+    description: "The date of the event, formatted as YYYYMMDD."
+  active1DayUsers:
+    type:
+      - "null"
+      - integer
+    description: "The number of distinct active users on your site or app within a 1 day period. The 1 day period includes the last day in the report's date range. Note: this is the same as Active Users."
+  _meta:
+    type: object
+    properties:
+      row_id:
+        type: integer
+    required:
+      - row_id
+required:
+  - date
+  - property_id

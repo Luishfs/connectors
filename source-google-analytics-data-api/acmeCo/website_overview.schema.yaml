@@ -1,0 +1,62 @@
+---
+$schema: "https://json-schema.org/draft-07/schema#"
+type:
+  - object
+additionalProperties: true
+properties:
+  property_id:
+    type:
+      - string
+  date:
+    type: string
+    description: "The date of the event, formatted as YYYYMMDD."
+  totalUsers:
+    type:
+      - "null"
+      - integer
+    description: "The number of distinct users who have logged at least one event, regardless of whether the site or app was in use when that event was logged."
+  newUsers:
+    type:
+      - "null"
+      - integer
+    description: "The number of users who interacted with your site or launched your app for the first time (event triggered: first_open or first_visit)."
+  sessions:
+    type:
+      - "null"
+      - integer
+    description: "The number of sessions that began on your site or app (event triggered: session_start)."
+  sessionsPerUser:
+    type:
+      - "null"
+      - number
+    description: The average number of sessions per user (Sessions divided by Active Users).
+  averageSessionDuration:
+    type:
+      - "null"
+      - number
+    description: "The average duration (in seconds) of users` sessions."
+  screenPageViews:
+    type:
+      - "null"
+      - integer
+    description: The number of app screens or web pages your users viewed. Repeated views of a single page or screen are counted. (screen_view + page_view events).
+  screenPageViewsPerSession:
+    type:
+      - "null"
+      - number
+    description: The number of app screens or web pages your users viewed per session. Repeated views of a single page or screen are counted. (screen_view + page_view events) / sessions.
+  bounceRate:
+    type:
+      - "null"
+      - number
+    description: "The percentage of sessions that were not engaged ((Sessions Minus Engaged sessions) divided by Sessions). This metric is returned as a fraction; for example, 0.2761 means 27.61% of sessions were bounces."
+  _meta:
+    type: object
+    properties:
+      row_id:
+        type: integer
+    required:
+      - row_id
+required:
+  - date
+  - property_id

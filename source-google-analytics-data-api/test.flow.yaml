@@ -1,19 +1,63 @@
 ---
+import:
+  - acmeCo/flow.yaml
 captures:
   acmeCo/source-google-analytics-data-api:
-    shards:
-      logLevel: debug
     endpoint:
       local:
         command:
           - python
-          # - "-Xfrozen_modules=off"
-          # - "-m"
-          # - debugpy
-          # - "--listen"
-          # - "0.0.0.0:5678"
-          # - "--wait-for-client"
           - "-m"
           - source_google_analytics_data_api
         config: config.yaml
-    bindings: []
+    bindings:
+      - resource:
+          stream: daily_active_users
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/daily_active_users
+      - resource:
+          stream: weekly_active_users
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/weekly_active_users
+      - resource:
+          stream: four_weekly_active_users
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/four_weekly_active_users
+      - resource:
+          stream: devices
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/devices
+      - resource:
+          stream: locations
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/locations
+      - resource:
+          stream: pages
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/pages
+      - resource:
+          stream: traffic_sources
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/traffic_sources
+      - resource:
+          stream: website_overview
+          syncMode: incremental
+          cursorField:
+            - date
+        target: acmeCo/website_overview
+    shards:
+      logLevel: debug

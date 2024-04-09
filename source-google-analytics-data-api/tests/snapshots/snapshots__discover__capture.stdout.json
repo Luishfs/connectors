@@ -32,14 +32,17 @@
           ]
         }
       },
+      "required": [
+        "date",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
-      "/date"
+      "/date",
+      "/property_id"
     ],
     "recommendedName": "daily_active_users",
     "resourceConfig": {
@@ -83,14 +86,17 @@
           ]
         }
       },
+      "required": [
+        "date",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
-      "/date"
+      "/date",
+      "/property_id"
     ],
     "recommendedName": "weekly_active_users",
     "resourceConfig": {
@@ -134,14 +140,17 @@
           ]
         }
       },
+      "required": [
+        "date",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
-      "/date"
+      "/date",
+      "/property_id"
     ],
     "recommendedName": "four_weekly_active_users",
     "resourceConfig": {
@@ -246,17 +255,23 @@
           ]
         }
       },
+      "required": [
+        "date",
+        "deviceCategory",
+        "operatingSystem",
+        "browser",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
       "/date",
       "/deviceCategory",
       "/operatingSystem",
-      "/browser"
+      "/browser",
+      "/property_id"
     ],
     "recommendedName": "devices",
     "resourceConfig": {
@@ -361,17 +376,23 @@
           ]
         }
       },
+      "required": [
+        "region",
+        "country",
+        "city",
+        "date",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
       "/region",
       "/country",
       "/city",
-      "/date"
+      "/date",
+      "/property_id"
     ],
     "recommendedName": "locations",
     "resourceConfig": {
@@ -430,16 +451,21 @@
           ]
         }
       },
+      "required": [
+        "date",
+        "hostName",
+        "pagePathPlusQueryString",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
       "/date",
       "/hostName",
-      "/pagePathPlusQueryString"
+      "/pagePathPlusQueryString",
+      "/property_id"
     ],
     "recommendedName": "pages",
     "resourceConfig": {
@@ -540,16 +566,21 @@
           ]
         }
       },
+      "required": [
+        "date",
+        "sessionSource",
+        "sessionMedium",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
       "/date",
       "/sessionSource",
-      "/sessionMedium"
+      "/sessionMedium",
+      "/property_id"
     ],
     "recommendedName": "traffic_sources",
     "resourceConfig": {
@@ -642,14 +673,17 @@
           ]
         }
       },
+      "required": [
+        "date",
+        "property_id"
+      ],
       "type": [
-        "null",
         "object"
       ]
     },
     "key": [
-      "/property_id",
-      "/date"
+      "/date",
+      "/property_id"
     ],
     "recommendedName": "website_overview",
     "resourceConfig": {
